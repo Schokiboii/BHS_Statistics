@@ -1,0 +1,51 @@
+Warnmeldung:
+Paket 'shiny' wurde unter R Version 4.2.3 erstellt 
+
+Attache Paket: 'bslib'
+
+Das folgende Objekt ist maskiert 'package:utils':
+
+    page
+
+Warnmeldung:
+Paket 'bslib' wurde unter R Version 4.2.3 erstellt 
+Warnmeldung:
+Paket 'readxl' wurde unter R Version 4.2.3 erstellt 
+
+Attache Paket: 'dplyr'
+
+Die folgenden Objekte sind maskiert von 'package:stats':
+
+    filter, lag
+
+Die folgenden Objekte sind maskiert von 'package:base':
+
+    intersect, setdiff, setequal, union
+
+Warnmeldung:
+Paket 'dplyr' wurde unter R Version 4.2.3 erstellt 
+
+Attache Paket: 'lubridate'
+
+Die folgenden Objekte sind maskiert von 'package:base':
+
+    date, intersect, setdiff, union
+
+Warnmeldung:
+Paket 'lubridate' wurde unter R Version 4.2.3 erstellt 
+
+Attache Paket: 'DT'
+
+Die folgenden Objekte sind maskiert von 'package:shiny':
+
+    dataTableOutput, renderDataTable
+
+Warnmeldung:
+Paket 'DT' wurde unter R Version 4.2.3 erstellt 
+Warnmeldung:
+Paket 'stringr' wurde unter R Version 4.2.3 erstellt 
+Warnmeldung:
+Paket 'ggplot2' wurde unter R Version 4.2.3 erstellt 
+
+Listening on http://127.0.0.1:8888
+^C
