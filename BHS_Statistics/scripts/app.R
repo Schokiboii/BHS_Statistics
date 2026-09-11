@@ -7,6 +7,34 @@ library(DT)
 library(stringr)
 library(ggplot2)
 
+# Helper function to auto-detect and read Excel or Hermeskim/standard CSV files
+read_data_file <- function(file_path) {
+  ext <- tolower(tools::file_ext(file_path))
+  
+  if (ext %in% c("xlsx", "xls")) {
+    return(readxl::read_excel(file_path))
+  } else if (ext == "csv") {
+    # Read raw lines to handle wrapped CSV exports (e.g. Hermeskim quotes/semicolons)
+    lines <- readLines(file_path, encoding = "UTF-8", warn = FALSE)
+    
+    # Strip trailing semicolons and whitespace
+    lines_clean <- sub(";+$", "", lines)
+    lines_clean <- sub("\\s+$", "", lines_clean)
+    
+    # Unwrap outer quotes if line is enclosed in quotes with escaped inner quotes
+    wrapped_idx <- startsWith(lines_clean, '"') & endsWith(lines_clean, '"')
+    lines_clean[wrapped_idx] <- gsub('""', '"', substr(lines_clean[wrapped_idx], 2, nchar(lines_clean[wrapped_idx]) - 1))
+    
+    # Determine delimiter (comma vs semicolon)
+    header <- lines_clean[1]
+    sep_char <- if (grepl(",", header)) "," else ";"
+    
+    return(read.csv(text = lines_clean, sep = sep_char, stringsAsFactors = FALSE, check.names = FALSE, fill = TRUE))
+  } else {
+    stop("Unsupported file format")
+  }
+}
+
 # Helper function to extract time strings as HH:MM:SS
 extract_time_str <- function(time_col) {
   if (is.null(time_col) || all(is.na(time_col))) {
@@ -63,7 +91,7 @@ ui <- page_navbar(
     title = "Geräte & Fahrten",
     layout_sidebar(
       sidebar = sidebar(
-        fileInput("file1", "Excel-Datei hochladen (.xlsx / .xls)", accept = c(".xlsx", ".xls")),
+        fileInput("file1", "Datei hochladen (.xlsx / .xls / .csv)", accept = c(".xlsx", ".xls", ".csv")),
         uiOutput("date_selector1")
       ),
       layout_columns(
@@ -107,7 +135,7 @@ ui <- page_navbar(
           open = FALSE,
           accordion_panel(
             "Andere Datei hochladen",
-            fileInput("file_a8", "Datei auswählen (.xlsx)", accept = c(".xlsx", ".xls"))
+            fileInput("file_a8", "Datei auswählen (.xlsx / .xls / .csv)", accept = c(".xlsx", ".xls", ".csv"))
           )
         )
       ),
@@ -173,16 +201,18 @@ server <- function(input, output, session) {
   raw_data1 <- reactive({
     req(input$file1)
     
-    df <- read_excel(input$file1$datapath)
-    df <- df %>% filter(!is.na(`Gerät`))
+    df <- read_data_file(input$file1$datapath)
+    req("Gerät" %in% names(df))
+    
+    df <- df %>% filter(!is.na(`Gerät`), str_trim(as.character(`Gerät`)) != "")
     
     df <- df %>%
       mutate(
         Transportdauer = as.numeric(gsub(",", ".", `Transportdauer`)),
         Pünktlichkeit = as.numeric(gsub(",", ".", `Pünktlichkeit`)),
-        Datum_Obj = parse_date_time(`Plan-Abholung`, orders = c("d.m.y H:M", "d.m.Y H:M")),
+        Datum_Obj = parse_date_time(`Plan-Abholung`, orders = c("d.m.y H:M", "d.m.Y H:M", "Y-m-d H:M:S", "d.m.y H:M:S", "d.m.Y H:M:S", "Y-m-d H:M")),
         Tag = as.Date(Datum_Obj),
-        `Gerät` = as.character(`Gerät`)
+        `Gerät` = str_trim(as.character(`Gerät`))
       )
     
     return(df)
@@ -257,15 +287,40 @@ server <- function(input, output, session) {
   # SERVER LOGIC TAB 2: Evaluation A8
   # ===========================================================================
   raw_data_a8 <- reactive({
-    file_path <- "../data/AuswertungA8.xlsx"
+    file_path <- if (!is.null(input$file_a8)) {
+      input$file_a8$datapath
+    } else if (file.exists("../data/AuswertungA8.xlsx")) {
+      "../data/AuswertungA8.xlsx"
+    } else if (file.exists("../data/AuswertungA8.csv")) {
+      "../data/AuswertungA8.csv"
+    } else {
+      NULL
+    }
     
     req(!is.null(file_path), file.exists(file_path))
     
-    df <- read_excel(file_path)
+    df <- read_data_file(file_path)
+    
+    # Auto-map columns if raw Hermeskim export was uploaded directly to Tab 2
+    if (!("Ambulanz" %in% names(df)) && ("Nach" %in% names(df))) {
+      df$Ambulanz <- df$Nach
+    }
+    if (!("Datum" %in% names(df)) && ("Plan-Abholung" %in% names(df))) {
+      df$Datum <- df$`Plan-Abholung`
+    }
+    if (!("Uhrzeit Annahme" %in% names(df)) && ("Annahme" %in% names(df))) {
+      df$`Uhrzeit Annahme` <- ifelse(is.na(df$Annahme) | df$Annahme == "", df$`Plan-Abholung`, df$Annahme)
+    }
+    if (!("Uhrzeit Abschluss" %in% names(df)) && ("Fertigstellung" %in% names(df))) {
+      df$`Uhrzeit Abschluss` <- df$Fertigstellung
+    }
+    if (!("Anmerkung" %in% names(df))) {
+      df$Anmerkung <- if ("Status" %in% names(df)) ifelse(is.na(df$Status), "", df$Status) else ""
+    }
     
     df <- df %>%
       mutate(
-        Datum = as.Date(Datum),
+        Datum = as.Date(parse_date_time(Datum, orders = c("d.m.Y", "Y-m-d", "d.m.y", "d.m.y H:M", "d.m.Y H:M"))),
         Ambulanz = str_trim(as.character(Ambulanz)),
         Anmerkung = ifelse(is.na(Anmerkung), "", str_trim(as.character(Anmerkung))),
         Ambulanz = case_when(
